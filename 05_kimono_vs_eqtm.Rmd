@@ -1,0 +1,85 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-libs}
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(ggVennDiagram)
+library(eulerr)
+```
+
+# eQTM analysis
+
+```{r setup-param-and-load-eqtm-data}
+treatment <- "dex"
+
+eqtm.pre     <- "~/bio/datasets/eQTM/"
+eqtm.res.pre <- paste0(eqtm.pre, "result/")
+
+methyl.layer.fn <- paste0(eqtm.pre, "methyl_beta_mtrx_", treatment, "_beta_0_p_90.csv")
+methyl.layer    <- fread(methyl.layer.fn)
+
+cis.eqtm.veh.fn <- paste0(eqtm.res.pre, "eqtm_cis_result_", treatment, ".csv")
+cis.eqtm.veh    <- fread(cis.eqtm.veh.fn)
+```
+
+```{r setup-param-and-load-kimono-data}
+data.dir.pre    <- "~/bio/datasets/kimono/"
+kimono.res.fn   <- paste0(data.dir.pre, "output/kimono_res_", treatment, ".csv") # experiment nr 5
+kimono.res      <- fread(kimono.res.fn)
+```
+
+```{r unique-cpgs-eqtm, cache = F}
+cis.eqtm <- cis.eqtm.veh[beta != 0, ] 
+# prior.cpg.ids  <- as.data.frame(cbind("CpG_ID" = unique(prior.cpg.gex$CpG_ID), "Type" = "Prior"))
+prior.cpg.ids <- as.data.frame(cbind("CpG_ID" = unique(rownames(methyl.layer)), "Type" = "Prior"))
+eqtm.cpg.ids  <- as.data.frame(cbind("CpG_ID" = unique(cis.eqtm$SNP), "Type" = "cis-eQTM"))
+
+fdr.thrsh <- 0.01
+beta.trsh <- 0
+
+cis.eqtm <- cis.eqtm.veh[FDR < fdr.thrsh & abs(beta) > beta.trsh] %>% unique()
+
+eqtm.cpg.ids.fdr  <- as.data.frame(cbind("CpG_ID" = unique(cis.eqtm$SNP), "Type" = paste0("cis-eQTM_FDR_", fdr.thrsh)))
+```
+
+```{r unique-cpgs-kimono, cache = F}
+kimono.net <- kimono.res[value != 0, ] 
+kimono.cpg.ids <- as.data.frame(cbind("CpG_ID" = unique(kimono.net[relation == "methyl_expr", predictor]), "Type" = "KiMONo_Predictor"))
+
+network <- kimono.net %>% filter(abs(value) > beta.trsh) %>% 
+  filter(r_squared > fdr.thrsh) %>%
+  filter(predictor != '(Intercept)')
+
+kimono.cpg.ids.fdr <- as.data.frame(cbind("CpG_ID" = unique(network[network$relation == "methyl_expr", predictor]), "Type" = paste("KiMONo_Predictor_FDR_", fdr.thrsh)))
+```
+
+```{r unique-cpgs-plot}
+cpgs.analysis <- rbind(kimono.cpg.ids.fdr, kimono.cpg.ids, prior.cpg.ids, eqtm.cpg.ids, eqtm.cpg.ids.fdr)
+
+ggplot(cpgs.analysis, aes(Type)) + 
+  geom_bar(stat = "count", fill = "purple") +
+  coord_flip() +
+  geom_text(stat = "count", aes(label=..count..), 
+     hjust = 0.5, color = "black", position = position_dodge(0.9), size = 3.5) +
+   labs(title = "Nr of unique CpGs")
+```
+
+```{r cpg-venn-plot}
+fit <- euler(list(cis_eqtm_cpgs = eqtm.cpg.ids.fdr$CpG_ID, kimono_cpgs = kimono.cpg.ids.fdr$CpG_ID))
+
+plot(fit,
+     quantities = list(type = c("counts", "percent")),
+     fill = c("red", "white"))
+
+# ggVennDiagram(list(cis_eqtm_cpgs = eqtm.cpg.ids.fdr$CpG_ID, kimono_cpgs = kimono.cpg.ids.fdr$CpG_ID), scaled = F) + theme(legend.position = "none")
+```
+
+```{r gene-venn-plot}
+cis.eqtm.genes.fdr   <- cis.eqtm$gene %>% unique()
+kimono.gene.fdr <- network[network$relation == "methyl_expr", target] %>% unique() 
+
+ggVennDiagram(list(cis_eqtm_genes = cis.eqtm.genes.fdr, kimono_genes = kimono.gene.fdr), scaled = T) + theme(legend.position = "none")
+```

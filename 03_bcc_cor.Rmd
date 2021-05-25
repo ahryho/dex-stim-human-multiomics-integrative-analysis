@@ -1,0 +1,50 @@
+---
+title: "03_bcc_cor"
+author: "Anastasiia"
+date: "5/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-libs}
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(corrplot)
+```
+
+```{r load-data}
+output.data.pre  <- "~/bio/datasets/kimono/"
+pheno.full.fn    <- paste0("~/bio/datasets/pheno/pheno_full_for_kimono.csv")  
+
+# Load full pheno tbl
+pheno.full <- read.csv2(pheno.full.fn) %>% setDT()
+pheno      <- pheno.full[DNAm_ID != "#N/A"]
+```
+
+```{r}
+
+# load("~/bio/datasets/gene_expression/ESet_dex_sva.rda")
+# x <- read.table("~/bio/datasets/gene_expression/v3_v4_sharedContent_QC.txt")
+# y <- read.table("~/bio/datasets/gene_expression/SampleSheet.txt", sep = ";")
+
+summary(pheno)
+colnames(pheno)
+
+bcc.gex  <- pheno[, c("Cort_D1", "ACTH_D1", "Leukos_D1", "Gran_D1", "Mono_D1", "Lymph_D1")]
+bcc.gex <- bcc.gex %>% 
+  mutate_all(~ifelse(is.na(.), median(., na.rm = TRUE), .))
+bcc.meth <- pheno[, c("CD8T", "CD4T", "NK", "Bcell", "Mono", "Gran")]
+sv.gex   <- pheno[, c("V1", "V2", "V3", "V4", "V5")]
+
+bcc.df <- scale(data.frame(gex = bcc.gex, meth = bcc.meth, gex = sv.gex, Dex = pheno$Dex))
+```
+
+
+```{r}
+cor.mtrx <- cor(bcc.df)
+corrplot(cor.mtrx, method = "ellipse") #number
+```

@@ -1,0 +1,101 @@
+---
+title: "03_bcc_cor"
+author: "Anastasiia"
+date: "5/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-libs}
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(corrplot)
+
+library(genefilter)
+library(eulerr)
+```
+
+lmer(beta.mtrx[cpg, ] ~ pheno$Sex + pheno$Real_Age + pheno$BMI + pheno$Status + 
+                       pheno$CD8T + pheno$CD4T + pheno$NK + pheno$Bcell + pheno$Mono + pheno$Gran +
+                       pheno$PC1 + pheno$PC2 + 
+                       (1|sample), REML = F)
+
+```{r load-data}
+src.data.pre <- "~/bio/datasets/methylation/"
+cpgs.stat.fn <- paste0(src.data.pre, "20_DMA/01_lme_models/lme_dex_no_cov_with_statistics.txt")
+dmp.pval.adj.fn  <- paste0(src.data.pre, "20_DMA/02_dmp/dmps_significant_with_beta_stat_bcc_pcs_beta_0_p_90.txt") # 
+dmp.pval.adj.fn  <- paste0(src.data.pre, "20_DMA/02_dmp/dmps_pval_adj_bcc_pcs.txt")
+
+# Load data
+
+cpgs.stat    <- fread(cpgs.stat.fn)
+pval.adj.tbl <- fread(dmp.pval.adj.fn, sep = "\t")
+```
+
+```{r}
+pval.adj.tbl$FC       <- as.numeric(pval.adj.tbl$FC)
+pval.adj.tbl$Pval_adj <- as.numeric(pval.adj.tbl$Pval_adj)
+
+pval.adj.tbl[Pval_adj < 0.9][,.N]
+
+```
+
+
+```{r}
+src.data.dir  <- "~/bio/datasets/methylation/10_final_qc_data/"
+beta.mtrx.fn  <- paste0(src.data.dir, "dex_methyl_beta_combat_mtrx.rds")
+
+beta.mtrx <- readRDS(beta.mtrx.fn)
+dim(beta.mtrx)
+
+cpg.vars <- cpgs.stat$Var_Total
+cpg.vars <- apply(beta.mtrx, 1, mad)
+
+var.cutoff <- 0.25
+beta.mtrx.var <- beta.mtrx[cpg.vars > quantile(cpg.vars, var.cutoff),]#c(var.cutoff, 1 - var.cutoff)),]
+dim(beta.mtrx.var)
+
+cpg.var.ids <- rownames(beta.mtrx.var)
+
+# CpGs with FDR
+methyl.layer.fn <- paste0("~/bio/datasets/eQTM/methyl_beta_mtrx_dex_beta_0_p_90.csv")
+methyl.layer.fdr90 <- fread(methyl.layer.fn)
+
+cpg.fdr.ids <- methyl.layer.fdr90$V1
+```
+
+```{r venn-plot-cpgs-var-fdr}
+fit <- euler(list(cpgs_var = cpg.var.ids, cpgs_fdr = cpg.fdr.ids))
+
+plot(fit,
+     quantities = list(type = c("counts", "percent")),
+     fill = c("red", "white"))
+```
+```{r}
+beta.mtrx.var.df <- as.data.frame(beta.mtrx.var)
+
+fwrite(beta.mtrx.var.df, 
+       "~/bio/datasets/eQTM/methyl_beta_mtrx_mad_25.csv",
+       quote = F, row.names = T, sep = ";")
+
+x <- fread( "~/bio/datasets/eQTM/methyl_beta_mtrx_mad_25.csv")
+```
+
+
+```{r}
+m = matrix(rnorm(5 * 6), 6)
+m
+summary(t(m))
+var <- varFilter(m, var.func = IQR, var.cutoff = c(0.2,0.8))
+summary(var)
+var
+
+vars <- apply(m, 1, mad)
+vars
+m
+m[vars > quantile(vars, c(0.25, 0.75)), ]
+```
